@@ -1,0 +1,99 @@
+[
+    {
+        "id": 1,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Check Prime: Write a program that takes an integer N as input and prints 'Yes' if it is prime, and 'No' otherwise.",
+        "standard_solution": {
+            "language": "python",
+            "code": "n = int(input())\nif n < 2:\n    print('No')\nelse:\n    is_prime = True\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            is_prime = False\n            break\n    print('Yes' if is_prime else 'No')"
+        },
+        "test_cases": [
+            { "input": "7", "output": "Yes", "type": "sample" },
+            { "input": "10", "output": "No", "type": "hidden" }
+        ]
+    },
+    {
+        "id": 2,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Reverse Words: First read an integer N (count of words), then read N space-separated words. Print them in reverse order.",
+        "standard_solution": {
+            "language": "python",
+            "code": "n = int(input())\nwords = input().split()\nprint(' '.join(words[::-1]))"
+        },
+        "test_cases": [
+            { 
+                "input": "2\nHello World", 
+                "output": "World Hello", 
+                "type": "sample" 
+            },
+            { 
+                "input": "3\nPython is awesome", 
+                "output": "awesome is Python", 
+                "type": "hidden" 
+            },
+            { 
+                "input": "1\nSingle", 
+                "output": "Single", 
+                "type": "hidden" 
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Find Missing Number: First read N (the range 1 to N), then read N-1 integers. Find the missing number.",
+        "standard_solution": {
+            "language": "python",
+            "code": "n = int(input())\nnums = list(map(int, input().split()))\nexpected_sum = n * (n + 1) // 2\nactual_sum = sum(nums)\nprint(expected_sum - actual_sum)"
+        },
+        "test_cases": [
+            { 
+                "input": "5\n1 2 4 5", 
+                "output": "3", 
+                "type": "sample" 
+            },
+            { 
+                "input": "3\n1 3", 
+                "output": "2", 
+                "type": "hidden" 
+            },
+            { 
+                "input": "5\n2 3 4 5", 
+                "output": "1", 
+                "type": "hidden" 
+            }
+        ]
+    },
+    {
+        "id": 4,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Count Set Bits: Given an integer N, count the number of 1s in its binary representation.",
+        "standard_solution": {
+            "language": "cpp",
+            "code": "#include <iostream>\nusing namespace std;\nint main() {\n    long long n;\n    if (!(cin >> n)) return 0;\n    int count = 0;\n    while (n > 0) {\n        n = n & (n - 1);\n        count++;\n    }\n    cout << count;\n    return 0;\n}"
+        },
+        "test_cases": [
+            { "input": "5", "output": "2", "type": "sample" },
+            { "input": "7", "output": "3", "type": "hidden" },
+            { "input": "1024", "output": "1", "type": "hidden" }
+        ]
+    },
+    {
+        "id": 5,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Palindrome Check: Given a string, check if it is a palindrome. Print 'Yes' or 'No'.",
+        "standard_solution": {
+            "language": "java",
+            "code": "import java.util.Scanner;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if(sc.hasNext()) {\n            String s = sc.next();\n            String rev = new StringBuilder(s).reverse().toString();\n            if(s.equals(rev)) System.out.print(\"Yes\");\n            else System.out.print(\"No\");\n        }\n    }\n}"
+        },
+        "test_cases": [
+            { "input": "madam", "output": "Yes", "type": "sample" },
+            { "input": "hello", "output": "No", "type": "hidden" }
+        ]
+    }
+]

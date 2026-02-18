@@ -1,0 +1,8 @@
+flask
+flask-socketio
+pymongo
+dnspython
+requests
+gunicorn
+gevent
+gevent-websocket
