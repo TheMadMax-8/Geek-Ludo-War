@@ -7,6 +7,7 @@ import requests
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit, join_room
@@ -16,6 +17,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# --- CORS: FORCE ALLOW ALL ---
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -23,6 +25,7 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
 
+# --- DATABASE SETUP ---
 MONGO_URI = os.environ.get("MONGO_URI")
 if not MONGO_URI:
     MONGO_URI = "mongodb+srv://admin:password@cluster0.mongodb.net/geek_ludo_db"
@@ -49,10 +52,9 @@ def load_questions():
 
 QUESTION_BANK = load_questions()
 
-def run_python_subprocess(code, input_str):
-    
+# --- LOCAL PYTHON FALLBACK ENGINE ---
+def run_python_local(code, input_str):
     try:
-        
         process = subprocess.Popen(
             [sys.executable, "-c", code],
             stdin=subprocess.PIPE,
@@ -66,7 +68,55 @@ def run_python_subprocess(code, input_str):
         process.kill()
         return "", "Execution Timed Out (Local)"
     except Exception as e:
-        return "", f"Local Execution Error: {str(e)}"
+        return "", f"Local Error: {str(e)}"
+
+# --- WANDBOX API ENGINE (The New API) ---
+def run_wandbox_api(code, lang, stdin):
+    url = "https://wandbox.org/api/compile.json"
+    
+    # Map our simplified names to Wandbox internal compiler names
+    compiler_map = {
+        "python": "cpython-3.10.2",
+        "cpp": "gcc-11.1.0",
+        "java": "openjdk-16.0.1"
+    }
+    
+    payload = {
+        "code": code,
+        "compiler": compiler_map.get(lang, "cpython-3.10.2"),
+        "stdin": stdin,
+        # 'options' helps GCC run smoothly
+        "options": "warning" if lang == "cpp" else ""
+    }
+    
+    try:
+        resp = requests.post(url, json=payload, timeout=8)
+        
+        if resp.status_code != 200:
+            return "", "", False # API Failed
+            
+        data = resp.json()
+        
+        # Wandbox returns 'status' as a string "0" for success
+        if 'status' not in data:
+            return "", "", False
+            
+        # Extract Output
+        # 'program_message' is usually stdout
+        # 'compiler_error' is usually stderr
+        stdout = data.get('program_message', '')
+        stderr = data.get('compiler_error', '')
+        
+        # If exit status is non-zero, treat stdout as error info too
+        if data['status'] != "0":
+            stderr += f"\nExit Code: {data['status']}"
+            
+        return stdout, stderr, True
+
+    except Exception as e:
+        print(f"Wandbox Error: {e}")
+        return "", "", False
+
 
 @app.route('/')
 def index(): return render_template('index.html')
@@ -155,7 +205,7 @@ def handle_submission_success(data):
     room = LOBBIES.get(data['room'])
     v = room['players'].get(request.sid)
     q_obj = next((q for q in QUESTION_BANK if q['id'] == int(data['q_id'])), None)
-
+    
     log_event("gameplay", {"user_id": v.get('user_id'), "action": "solve_success", "rating": q_obj.get('rating', 0), "difficulty": q_obj.get('difficulty', 'unknown')})
     
     move = data.get('steps', 3)
@@ -181,40 +231,32 @@ def submit_code():
     q = next((qu for qu in QUESTION_BANK if qu['id'] == q_id), None)
     if not q: return jsonify({"success": False, "type": "system", "output": "Q Not Found"})
 
-    version_map = { "python": "3.10.0", "cpp": "10.2.0", "java": "15.0.2" }
-    url = "https://emkc.org/api/v2/piston/execute"
-    headers = {"User-Agent": "GeekLudo/1.0", "Content-Type": "application/json"}
-    
     is_python = d['language'] == 'python'
 
     for i, case in enumerate(q['test_cases']):
         actual, err = "", ""
-        api_failed = False
         
-        payload = { "language": d['language'], "version": version_map.get(d['language'], "3.10.0"), "files": [{"content": d['code']}], "stdin": case['input'] }
+        # 1. TRY WANDBOX API (The New Engine)
+        actual, err, api_success = run_wandbox_api(d['code'], d['language'], case['input'])
         
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=5)
-            if resp.status_code == 200:
-                res_data = resp.json()
-                if 'run' in res_data:
-                    actual = res_data['run']['stdout'].strip()
-                    err = res_data['run']['stderr']
-                else: api_failed = True
-            else: api_failed = True
-        except: api_failed = True
-     
-        if api_failed:
+        # 2. FAILOVER: LOCAL PYTHON (If Wandbox Fails)
+        if not api_success:
             if is_python:
-                print("API FAILED. SWITCHING TO LOCAL SUBPROCESS.")
-                actual, err = run_python_subprocess(d['code'], case['input'])
-                actual = actual.strip()
+                print("WANDBOX FAILED. SWITCHING TO LOCAL.")
+                actual, err = run_python_local(d['code'], case['input'])
             else:
-                return jsonify({"success": True, "output": "⚠️ Judge Busy: Auto-Passed (Non-Python)"})
-                
+                # C++/Java Failover (Auto-Pass)
+                return jsonify({"success": True, "output": "⚠️ Judge Busy: Auto-Passed (C++/Java)"})
+
+        # 3. VERIFY OUTPUT
+        actual = actual.strip()
         if err: return jsonify({"success": False, "type": "player", "output": f"Runtime Error:\n{err}"})
         if actual != case['output'].strip():
-            return jsonify({ "success": False, "type": "player", "output": f"❌ FAILED Test Case {i+1}\nInput:\n{case['input']}\nExpected:\n{case['output']}\nGot:\n{actual}" })
+            return jsonify({ 
+                "success": False, 
+                "type": "player", 
+                "output": f"❌ FAILED Test Case {i+1}\nInput:\n{case['input']}\nExpected:\n{case['output']}\nGot:\n{actual}" 
+            })
 
     return jsonify({"success": True, "output": "✅ PASSED"})
 
