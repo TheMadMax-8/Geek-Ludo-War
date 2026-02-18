@@ -73,8 +73,8 @@
         "rating": 800,
         "question": "Count Set Bits: Given an integer N, count the number of 1s in its binary representation.",
         "standard_solution": {
-            "language": "cpp",
-            "code": "#include <iostream>\nusing namespace std;\nint main() {\n    long long n;\n    if (!(cin >> n)) return 0;\n    int count = 0;\n    while (n > 0) {\n        n = n & (n - 1);\n        count++;\n    }\n    cout << count;\n    return 0;\n}"
+            "language": "python",
+            "code": "n = int(input())\nprint(bin(n).count('1'))"
         },
         "test_cases": [
             { "input": "5", "output": "2", "type": "sample" },
@@ -88,8 +88,8 @@
         "rating": 800,
         "question": "Palindrome Check: Given a string, check if it is a palindrome. Print 'Yes' or 'No'.",
         "standard_solution": {
-            "language": "java",
-            "code": "import java.util.Scanner;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if(sc.hasNext()) {\n            String s = sc.next();\n            String rev = new StringBuilder(s).reverse().toString();\n            if(s.equals(rev)) System.out.print(\"Yes\");\n            else System.out.print(\"No\");\n        }\n    }\n}"
+            "language": "python",
+            "code": "s = input().strip()\nprint('Yes' if s == s[::-1] else 'No')"
         },
         "test_cases": [
             { "input": "madam", "output": "Yes", "type": "sample" },
