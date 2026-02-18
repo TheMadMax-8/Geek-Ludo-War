@@ -32,7 +32,7 @@ h1 {
     width: 600px;
     height: 600px;
     position: relative;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
     background-image: 
         linear-gradient(#bdc3c7 1px, transparent 1px),
         linear-gradient(90deg, #bdc3c7 1px, transparent 1px);
@@ -98,7 +98,7 @@ h1 {
     height: 32px;
     border-radius: 50%;
     border: 2px solid white;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.8);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.8);
     z-index: 10; 
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     position: relative;
@@ -117,7 +117,7 @@ h1 {
     padding: 20px;
     border-radius: 10px;
     text-align: left;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
     color: #ecf0f1;
 }
 
@@ -142,11 +142,11 @@ h1 {
     position: fixed;
     top: 0; left: 0;
     width: 100%; height: 100%;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0, 0, 0, 0.85);
     display: none;
     justify-content: center;
     align-items: center;
-    z-index: 999;
+    z-index: 3000;
 }
 
 .modal-box {
@@ -157,6 +157,12 @@ h1 {
     text-align: left;
     box-shadow: 0 0 20px #000;
     color: #2c3e50;
+}
+
+#lobby-player-list {
+    color: #ffffff !important;
+    font-weight: bold;
+    padding: 5px;
 }
 
 .modal-header {
@@ -174,12 +180,13 @@ h1 {
     height: 300px;
     border: 1px solid #ddd;
     border-radius: 4px;
-    z-index: 10;
+    z-index: 1;
 }
 
 .CodeMirror-cursor {
     border-left: 2px solid white !important;
-    z-index: 100 !important;
+    z-index: 10 !important;
+    visibility: visible !important;
 }
 
 #q-text {
@@ -191,27 +198,13 @@ h1 {
     padding-bottom: 10px;
 }
 
-#hack-sample-in, #hack-sample-out {
+#hack-sample-in, #hack-sample-out,
+#sample-in, #sample-out {
     font-family: 'Consolas', 'Monaco', monospace; 
     white-space: pre-wrap; 
     display: block; 
     margin-top: 5px;
-    background: rgba(0,0,0,0.1);
+    background: rgba(0, 0, 0, 0.15);
     padding: 5px;
     border-radius: 3px;
-}
-
-#sample-in, #sample-out {
-    white-space: pre-wrap;
-    font-family: 'Consolas', 'Monaco', monospace;
-    display: block; 
-    margin-top: 5px;
-    background: rgba(0,0,0,0.2);
-    padding: 5px;
-    border-radius: 3px;
-}
-
-#lobby-player-list {
-    color: #fff;
-    font-weight: bold;
 }
