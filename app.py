@@ -33,6 +33,7 @@ db = client.geek_ludo_db
 logs_collection = db.game_logs
 
 LOBBIES = {}
+USER_TIMERS = {}
 BASE_ORDER = ['red', 'green', 'yellow', 'blue'] 
 SAFE_INDICES = [0, 8, 13, 21, 26, 34, 39, 47]
 
@@ -184,7 +185,23 @@ def handle_submission_success(data):
     v = room['players'].get(request.sid)
     q_obj = next((q for q in QUESTION_BANK if q['id'] == int(data['q_id'])), None)
     
-    log_event("gameplay", {"user_id": v.get('user_id'), "action": "solve_success", "rating": q_obj.get('rating', 0), "difficulty": q_obj.get('difficulty', 'unknown')})
+    time_taken = 0
+    if request.sid in USER_TIMERS and USER_TIMERS[request.sid]['q_id'] == q_obj['id']:
+        start_time = USER_TIMERS[request.sid]['start']
+        time_taken = round(time.time() - start_time, 2)
+        del USER_TIMERS[request.sid]
+
+    log_data = {
+        "user_id": v.get('user_id'),
+        "action": "solve_success",
+        "success": True,
+        "time_taken": time_taken,
+        "rating": q_obj.get('rating', 800),
+        "difficulty": q_obj.get('difficulty', 'Easy'),
+        "language": data.get('language', 'Mysterious Language')
+    }
+    
+    log_event("gameplay", log_data)
     
     move = data.get('steps', 3)
     v['prev_step'] = v['step']
@@ -358,6 +375,8 @@ def get_question():
          return jsonify({"error": "No questions available"}), 404
          
     q = random.choice(QUESTION_BANK)
+    USER_TIMERS[request.sid] = {'q_id': q['id'], 'start': time.time()}
+    
     sample = next((tc for tc in q.get('test_cases', []) if tc['type'] == 'sample'), None)
     return jsonify({ "id": q['id'], "question": q['question'], "sample_input": sample['input'] if sample else "", "sample_output": sample['output'] if sample else "" })
 
