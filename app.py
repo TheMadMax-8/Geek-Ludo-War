@@ -75,20 +75,17 @@ def run_python_local(code, input_str):
 def run_wandbox_api(code, lang, stdin):
     url = "https://wandbox.org/api/compile.json"
     compiler_map = { "python": "cpython-3.10.2", "cpp": "gcc-11.1.0", "java": "openjdk-16.0.1" }
-    
     payload = {
         "code": code,
         "compiler": compiler_map.get(lang, "cpython-3.10.2"),
         "stdin": stdin,
         "options": "warning" if lang == "cpp" else ""
     }
-    
     try:
         resp = requests.post(url, json=payload, timeout=8)
         if resp.status_code != 200: return "", "", False
         data = resp.json()
         if 'status' not in data: return "", "", False
-        
         stdout = data.get('program_message', '')
         stderr = data.get('compiler_error', '')
         if data['status'] != "0": stderr += f"\nExit Code: {data['status']}"
@@ -114,9 +111,6 @@ def pass_turn_logic(room, room_id):
             emit('turn_change', {'active_color': next_color}, room=room_id)
             found_next = True
             break
-            
-    if not found_next:
-        print(f"Room {room_id}: No active players found.")
 
 @socketio.on('join_game')
 def handle_join(data):
@@ -125,15 +119,12 @@ def handle_join(data):
     name = data['name'].strip()
     user_id = data.get('user_id', 'anonymous')
     sid = request.sid
-
     if room_id not in LOBBIES:
         LOBBIES[room_id] = {'players': {}, 'turn_order': [], 'active_color': None, 'started': False, 'hack_state': {'active': False, 'pending_hackers': []}}
     room = LOBBIES[room_id]
-    
     exact_match = next((p for p in room['players'].values() if p['color'] == color and p['name'] == name), None)
     color_taken = next((p for p in room['players'].values() if p['color'] == color and p['name'] != name), None)
     name_taken = next((p for p in room['players'].values() if p['name'] == name and p['color'] != color), None)
-
     if room['started'] and not exact_match:
         emit('join_error', {'message': '⛔ MATCH STARTED!'}, room=sid)
         return
@@ -143,7 +134,6 @@ def handle_join(data):
     if name_taken:
         emit('join_error', {'message': f'Name "{name}" taken!'}, room=sid)
         return
-
     if exact_match:
         if exact_match['id'] in room['players']: del room['players'][exact_match['id']]
         exact_match.update({'id': sid, 'connected': True})
@@ -154,17 +144,14 @@ def handle_join(data):
         room['players'][sid] = { 'id': sid, 'name': name, 'color': color, 'step': -1, 'connected': True, 'user_id': user_id }
         join_room(room_id)
         log_event("session", {"room": room_id, "user_id": user_id, "action": "join"})
-
     active_colors = [p['color'] for p in room['players'].values()]
     room['turn_order'] = sorted(active_colors, key=lambda x: BASE_ORDER.index(x))
     if not room['active_color']: room['active_color'] = room['turn_order'][0]
-    
     emit('join_success', {'color': color, 'room': room_id, 'started': room['started']}, room=sid)
     player_list = [{'name': p['name'], 'color': p['color'], 'online': p.get('connected', True)} for p in room['players'].values()]
     emit('update_player_list', {'players': player_list}, room=room_id)
     emit('sync_state', {'positions': {p['color']: p['step'] for p in room['players'].values()}}, room=room_id)
     emit('turn_change', {'active_color': room['active_color']}, room=room_id)
-
     if room['hack_state']['active']:
         h = room['hack_state']
         q = next((q for q in QUESTION_BANK if q['id'] == int(h['question_id'])), None)
@@ -184,13 +171,11 @@ def handle_submission_success(data):
     room = LOBBIES.get(data['room'])
     v = room['players'].get(request.sid)
     q_obj = next((q for q in QUESTION_BANK if q['id'] == int(data['q_id'])), None)
-    
     time_taken = 0
     if request.sid in USER_TIMERS and USER_TIMERS[request.sid]['q_id'] == q_obj['id']:
         start_time = USER_TIMERS[request.sid]['start']
         time_taken = round(time.time() - start_time, 2)
         del USER_TIMERS[request.sid]
-
     log_data = {
         "user_id": v.get('user_id'),
         "action": "solve_success",
@@ -198,21 +183,17 @@ def handle_submission_success(data):
         "time_taken": time_taken,
         "rating": q_obj.get('rating', 800),
         "difficulty": q_obj.get('difficulty', 'Easy'),
-        "language": data.get('language', 'Mysterious Language')
+        "language": data.get('language', 'python')
     }
-    
     log_event("gameplay", log_data)
-    
     move = data.get('steps', 3)
     v['prev_step'] = v['step']
     v['step'] += move
     emit('animate_move', {'color': v['color'], 'total_steps_moved': move}, room=data['room'])
-    
     hks = [p['color'] for p in room['players'].values() if p['color'] != v['color'] and p.get('connected', True)]
     if not hks:
         pass_turn_logic(room, data['room'])
         return
-        
     room['hack_state'] = {'active': True, 'victim': v['color'], 'victim_code': data['code'], 'victim_lang': data['language'], 'question_id': data['q_id'], 'pending_hackers': hks, 'hack_successful': False}
     sample = next((tc for tc in q_obj['test_cases'] if tc['type'] == 'sample'), q_obj['test_cases'][0])
     emit('hack_phase_start', {'victim_name': v['name'], 'victim_color': v['color'], 'code': data['code'], 'question_text': q_obj['question'], 'sample_input': sample['input'], 'sample_output': sample['output']}, room=data['room'])
@@ -223,36 +204,28 @@ def handle_hack_attempt(data):
     action = data['action']
     hacker_input = data.get('input', '')
     hacker_expected = data.get('expected', '')
-    
     room = LOBBIES[room_id]
     hacker = room['players'][request.sid]
     victim_color = room['hack_state']['victim']
     victim = next((p for p in room['players'].values() if p['color'] == victim_color), None)
-
     if hacker['color'] in room['hack_state']['pending_hackers']:
         room['hack_state']['pending_hackers'].remove(hacker['color'])
-
     if action == 'skip':
         emit('hack_log', {'message': f"{hacker['name']} skipped."}, room=room_id)
         log_event("hack", {"hacker": hacker.get('user_id'), "victim": victim.get('user_id'), "action": "skip"})
-    
     elif action == 'hack':
         q_id = room['hack_state'].get('question_id')
         question_obj = next((q for q in QUESTION_BANK if q['id'] == int(q_id)), None)
         is_hack_valid = False
-        
         if question_obj and 'standard_solution' in question_obj:
             std_sol = question_obj['standard_solution']
             std_out, std_err, success = run_wandbox_api(std_sol['code'], std_sol['language'], hacker_input)
-            
             if not success and std_sol['language'] == 'python':
                 std_out, std_err = run_python_local(std_sol['code'], hacker_input)
             elif not success:
-                std_out, std_err = "", "API Busy" 
-                
+                std_out, std_err = "", "API Busy"
             if not std_err and std_out.strip() == hacker_expected.strip():
                 is_hack_valid = True
-        
         if not is_hack_valid:
             hacker['step'] -= 2
             if hacker['step'] < -1: hacker['step'] = -1
@@ -262,24 +235,20 @@ def handle_hack_attempt(data):
         else:
             vic_code = room['hack_state']['victim_code']
             vic_lang = room['hack_state']['victim_lang']
-            
             vic_out, vic_err, success = run_wandbox_api(vic_code, vic_lang, hacker_input)
             if not success and vic_lang == 'python':
                 vic_out, vic_err = run_python_local(vic_code, hacker_input)
             elif not success:
                  vic_out, vic_err = "", "API Busy"
-
             if vic_err or vic_out.strip() != hacker_expected.strip():
                 hacker['step'] += 2
                 emit('animate_move', {'color': hacker['color'], 'total_steps_moved': 2}, room=room_id)
                 emit('hack_log', {'message': f"⚔️ {hacker['name']} SUCCESS! (+2)"}, room=room_id)
                 log_event("hack", {"hacker": hacker.get('user_id'), "victim": victim.get('user_id'), "action": "success"})
-                
                 if not room['hack_state']['hack_successful']:
                     room['hack_state']['hack_successful'] = True
                     is_safe = victim['step'] in SAFE_INDICES
                     old_pos = victim['step']
-                    
                     if is_safe:
                         msg = f"🛡️ {victim['name']} BLOCKED PENALTY (Safe Spot)!"
                         target_pos = old_pos
@@ -287,7 +256,6 @@ def handle_hack_attempt(data):
                         target_pos = old_pos - 3
                         if target_pos < -1: target_pos = -1
                         msg = f"💔 SOLUTION CRASHED! {victim['name']} penalized (-3)."
-
                     emit('animate_move', {'color': victim['color'], 'total_steps_moved': target_pos - old_pos}, room=room_id)
                     victim['step'] = target_pos
                     emit('checkpoint_alert', {'message': msg}, room=room_id)
@@ -297,7 +265,6 @@ def handle_hack_attempt(data):
                 emit('animate_move', {'color': hacker['color'], 'total_steps_moved': -2}, room=room_id)
                 emit('hack_log', {'message': f"🛡️ Hack Failed. Victim code handled it! (-2)"}, room=room_id)
                 log_event("hack", {"hacker": hacker.get('user_id'), "victim": victim.get('user_id'), "action": "fail_survival"})
-
     if not room['hack_state']['pending_hackers']:
         emit('hack_phase_end', {}, room=room_id)
         pass_turn_logic(room, room_id)
@@ -311,11 +278,9 @@ def handle_move(data):
     room = LOBBIES[room_id]
     player = room['players'].get(sid)
     if not player or player['color'] != room['active_color']: return
-
     if steps < 0 and player['step'] in SAFE_INDICES:
         emit('checkpoint_alert', {'message': f"🛡️ {player['name']} IS SAFE!"}, room=room_id)
         steps = 0
-    
     player['step'] += steps
     if player['step'] < -1: player['step'] = -1
     emit('animate_move', {'color': player['color'], 'total_steps_moved': steps}, room=room_id)
@@ -326,32 +291,25 @@ def submit_code():
     d = request.json
     try: q_id = int(d.get('q_id'))
     except: return jsonify({"success": False, "type": "system", "output": "Invalid QID"})
-
     q = next((qu for qu in QUESTION_BANK if qu['id'] == q_id), None)
     if not q: return jsonify({"success": False, "type": "system", "output": "Q Not Found"})
-
     is_python = d['language'] == 'python'
-
     for i, case in enumerate(q['test_cases']):
         actual, err = "", ""
-        
         actual, err, api_success = run_wandbox_api(d['code'], d['language'], case['input'])
-        
         if not api_success:
             if is_python:
                 actual, err = run_python_local(d['code'], case['input'])
             else:
-                return jsonify({"success": False, "type": "system", "output": "Judge Error: API Busy (Try again or use Python)"})
-
+                return jsonify({"success": False, "type": "system", "output": "Judge Error: API Busy"})
         actual = actual.strip()
         if err: return jsonify({"success": False, "type": "player", "output": f"Runtime Error:\n{err}"})
         if actual != case['output'].strip():
             return jsonify({ 
                 "success": False, 
                 "type": "player", 
-                "output": f"❌ FAILED Test Case {i+1}\nInput:\n{case['input']}\nExpected:\n{case['output']}\nGot:\n{actual}" 
+                "output": f"❌ FAILED Test Case {i+1}" 
             })
-
     return jsonify({"success": True, "output": "✅ PASSED"})
 
 @socketio.on('disconnect')
@@ -370,13 +328,12 @@ def get_question():
     global QUESTION_BANK
     if not QUESTION_BANK:
         QUESTION_BANK = load_questions()
-    
     if not QUESTION_BANK:
          return jsonify({"error": "No questions available"}), 404
-         
     q = random.choice(QUESTION_BANK)
-    USER_TIMERS[request.sid] = {'q_id': q['id'], 'start': time.time()}
-    
+    sid = request.args.get('sid')
+    if sid:
+        USER_TIMERS[sid] = {'q_id': q['id'], 'start': time.time()}
     sample = next((tc for tc in q.get('test_cases', []) if tc['type'] == 'sample'), None)
     return jsonify({ "id": q['id'], "question": q['question'], "sample_input": sample['input'] if sample else "", "sample_output": sample['output'] if sample else "" })
 
