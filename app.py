@@ -4,6 +4,7 @@ monkey.patch_all()
 import json
 import random
 import requests
+import time
 import os
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
@@ -313,12 +314,23 @@ def handle_hack_attempt(data):
 def run_code_piston(code, lang, stdin):
     version_map = { "python": "3.10.0", "cpp": "10.2.0", "java": "15.0.2" }
     url = "https://emkc.org/api/v2/piston/execute"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Content-Type": "application/json"
+    }
     payload = { "language": lang, "version": version_map.get(lang, "3.10.0"), "files": [{"content": code}], "stdin": stdin }
-    try:
-        resp = requests.post(url, json=payload, timeout=5).json()
-        if 'run' in resp: return resp['run']['stdout'], resp['run']['stderr']
-    except: pass
-    return "", "System Error"
+    
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                if 'run' in data: return data['run']['stdout'], data['run']['stderr']
+            time.sleep(1)
+        except:
+            time.sleep(1)
+            
+    return "", "System Error: Runner Busy"
 
 @socketio.on('player_move')
 def handle_move(data):
@@ -348,44 +360,72 @@ def get_question():
 
 @app.route('/submit_code', methods=['POST'])
 def submit_code():
-    data = request.json
-    user_code = data.get('code', '')
-    question_id = int(data.get('q_id'))
-    language = data.get('language', 'python')
+    d = request.json
+    try:
+        q_id = int(d.get('q_id'))
+    except:
+        return jsonify({"success": False, "type": "system", "output": "Invalid QID"})
 
-    question_obj = next((q for q in QUESTION_BANK if q['id'] == question_id), None)
-    if not question_obj: 
+    q = next((qu for qu in QUESTION_BANK if qu['id'] == q_id), None)
+    if not q: 
         return jsonify({"success": False, "type": "system", "output": "Question Not Found"})
 
     version_map = { "python": "3.10.0", "cpp": "10.2.0", "java": "15.0.2" }
     url = "https://emkc.org/api/v2/piston/execute"
-    test_cases = question_obj.get('test_cases', [])
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Content-Type": "application/json"
+    }
+
+    test_cases = q.get('test_cases', [])
 
     for i, case in enumerate(test_cases):
-        payload = { "language": language, "version": version_map.get(language, "3.10.0"), "files": [{"content": user_code}], "stdin": case['input'] }
-        try:
-            response = requests.post(url, json=payload, timeout=5)
-            
-            if response.status_code != 200:
-                return jsonify({"success": False, "type": "system", "output": "API Error: Runner Busy"})
+        payload = { 
+            "language": d['language'], 
+            "version": version_map.get(d['language'], "3.10.0"), 
+            "files": [{"content": d['code']}], 
+            "stdin": case['input'] 
+        }
+        
+        success = False
+        last_error = ""
 
-            result = response.json()
-            if 'run' not in result: 
-                return jsonify({"success": False, "type": "system", "output": "API Error: No Output"})
-            
-            actual = result['run']['stdout'].strip()
-            err = result['run']['stderr']
-            
-            if err: 
-                return jsonify({"success": False, "type": "player", "output": f"Runtime Error on Test Case {i+1}:\n{err}"})
-            
-            if actual != case['output'].strip():
-                return jsonify({ "success": False, "type": "player", "output": f"❌ FAILED Test Case {i+1}\nInput:\n{case['input']}\nExpected:\n{case['output']}\nGot:\n{actual}" })
+        for attempt in range(3):
+            try:
+                response = requests.post(url, json=payload, headers=headers, timeout=5)
                 
-        except Exception as e:
-            return jsonify({"success": False, "type": "system", "output": "Server Connection Error"})
+                if response.status_code == 200:
+                    result = response.json()
+                    if 'run' in result:
+                        actual = result['run']['stdout'].strip()
+                        err = result['run']['stderr']
+                        
+                        if err: 
+                            return jsonify({"success": False, "type": "player", "output": f"Runtime Error on Test Case {i+1}:\n{err}"})
+                        
+                        if actual != case['output'].strip():
+                            return jsonify({ 
+                                "success": False, 
+                                "type": "player", 
+                                "output": f"❌ FAILED Test Case {i+1}\nInput:\n{case['input']}\nExpected:\n{case['output']}\nGot:\n{actual}" 
+                            })
+                        
+                        success = True
+                        break
+            
+                time.sleep(1)
+            except Exception as e:
+                last_error = str(e)
+                time.sleep(1)
+        
+        if not success:
+            print(f"FAILED after 3 retries. Last error: {last_error}")
+            return jsonify({"success": False, "type": "system", "output": "System Busy: Please Click Run Again"})
     
-    return jsonify({"success": True, "output": "✅ PRETESTS PASSED"})
+    response = jsonify({"success": True, "output": "✅ PASSED"})
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    return response
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
