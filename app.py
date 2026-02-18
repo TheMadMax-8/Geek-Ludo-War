@@ -17,7 +17,6 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# --- CORS: FORCE ALLOW ALL ---
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
@@ -25,7 +24,6 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
 
-# --- DATABASE SETUP ---
 MONGO_URI = os.environ.get("MONGO_URI")
 if not MONGO_URI:
     MONGO_URI = "mongodb+srv://admin:password@cluster0.mongodb.net/geek_ludo_db"
@@ -38,82 +36,15 @@ LOBBIES = {}
 BASE_ORDER = ['red', 'green', 'yellow', 'blue'] 
 SAFE_INDICES = [0, 13, 26, 39]
 
-# --- YOUR CUSTOM QUESTION BANK (Hardcoded for Stability) ---
-QUESTION_BANK = [
-    {
-        "id": 1,
-        "difficulty": "Easy",
-        "rating": 800,
-        "question": "Check Prime: Write a program that takes an integer N as input and prints 'Yes' if it is prime, and 'No' otherwise.",
-        "standard_solution": {
-            "language": "python",
-            "code": "n = int(input())\nif n < 2:\n    print('No')\nelse:\n    is_prime = True\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            is_prime = False\n            break\n    print('Yes' if is_prime else 'No')"
-        },
-        "test_cases": [
-            { "input": "7", "output": "Yes", "type": "sample" },
-            { "input": "10", "output": "No", "type": "hidden" }
-        ]
-    },
-    {
-        "id": 2,
-        "difficulty": "Easy",
-        "rating": 800,
-        "question": "Reverse Words: First read an integer N (count of words), then read N space-separated words. Print them in reverse order.",
-        "standard_solution": {
-            "language": "python",
-            "code": "n = int(input())\nwords = input().split()\nprint(' '.join(words[::-1]))"
-        },
-        "test_cases": [
-            { "input": "2\nHello World", "output": "World Hello", "type": "sample" },
-            { "input": "3\nPython is awesome", "output": "awesome is Python", "type": "hidden" },
-            { "input": "1\nSingle", "output": "Single", "type": "hidden" }
-        ]
-    },
-    {
-        "id": 3,
-        "difficulty": "Easy",
-        "rating": 800,
-        "question": "Find Missing Number: First read N (the range 1 to N), then read N-1 integers. Find the missing number.",
-        "standard_solution": {
-            "language": "python",
-            "code": "n = int(input())\nnums = list(map(int, input().split()))\nexpected_sum = n * (n + 1) // 2\nactual_sum = sum(nums)\nprint(expected_sum - actual_sum)"
-        },
-        "test_cases": [
-            { "input": "5\n1 2 4 5", "output": "3", "type": "sample" },
-            { "input": "3\n1 3", "output": "2", "type": "hidden" },
-            { "input": "5\n2 3 4 5", "output": "1", "type": "hidden" }
-        ]
-    },
-    {
-        "id": 4,
-        "difficulty": "Easy",
-        "rating": 800,
-        "question": "Count Set Bits: Given an integer N, count the number of 1s in its binary representation.",
-        "standard_solution": {
-            "language": "cpp",
-            "code": "#include <iostream>\nusing namespace std;\nint main() {\n    long long n;\n    if (!(cin >> n)) return 0;\n    int count = 0;\n    while (n > 0) {\n        n = n & (n - 1);\n        count++;\n    }\n    cout << count;\n    return 0;\n}"
-        },
-        "test_cases": [
-            { "input": "5", "output": "2", "type": "sample" },
-            { "input": "7", "output": "3", "type": "hidden" },
-            { "input": "1024", "output": "1", "type": "hidden" }
-        ]
-    },
-    {
-        "id": 5,
-        "difficulty": "Easy",
-        "rating": 800,
-        "question": "Palindrome Check: Given a string, check if it is a palindrome. Print 'Yes' or 'No'.",
-        "standard_solution": {
-            "language": "java",
-            "code": "import java.util.Scanner;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if(sc.hasNext()) {\n            String s = sc.next();\n            String rev = new StringBuilder(s).reverse().toString();\n            if(s.equals(rev)) System.out.print(\"Yes\");\n            else System.out.print(\"No\");\n        }\n    }\n}"
-        },
-        "test_cases": [
-            { "input": "madam", "output": "Yes", "type": "sample" },
-            { "input": "hello", "output": "No", "type": "hidden" }
-        ]
-    }
-]
+def load_questions():
+    try:
+        with open('questions.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading questions.json: {e}")
+        return []
+
+QUESTION_BANK = load_questions()
 
 def log_event(event_type, data):
     try:
@@ -122,7 +53,6 @@ def log_event(event_type, data):
     except Exception as e:
         print(f"Mongo Error: {e}")
 
-# --- LOCAL PYTHON FALLBACK ENGINE ---
 def run_python_local(code, input_str):
     try:
         process = subprocess.Popen(
@@ -140,7 +70,6 @@ def run_python_local(code, input_str):
     except Exception as e:
         return "", f"Local Error: {str(e)}"
 
-# --- WANDBOX API ENGINE (Compatible with Render) ---
 def run_wandbox_api(code, lang, stdin):
     url = "https://wandbox.org/api/compile.json"
     compiler_map = { "python": "cpython-3.10.2", "cpp": "gcc-11.1.0", "java": "openjdk-16.0.1" }
@@ -270,6 +199,25 @@ def handle_submission_success(data):
     sample = next((tc for tc in q_obj['test_cases'] if tc['type'] == 'sample'), q_obj['test_cases'][0])
     emit('hack_phase_start', {'victim_name': v['name'], 'victim_color': v['color'], 'code': data['code'], 'question_text': q_obj['question'], 'sample_input': sample['input'], 'sample_output': sample['output']}, room=data['room'])
 
+@socketio.on('player_move')
+def handle_move(data):
+    room_id = data.get('room')
+    steps = data.get('steps')
+    sid = request.sid
+    if not room_id or room_id not in LOBBIES: return
+    room = LOBBIES[room_id]
+    player = room['players'].get(sid)
+    if not player or player['color'] != room['active_color']: return
+
+    if steps < 0 and player['step'] in SAFE_INDICES:
+        emit('checkpoint_alert', {'message': f"🛡️ {player['name']} IS SAFE!"}, room=room_id)
+        steps = 0
+    
+    player['step'] += steps
+    if player['step'] < -1: player['step'] = -1
+    emit('animate_move', {'color': player['color'], 'total_steps_moved': steps}, room=room_id)
+    pass_turn_logic(room, room_id)
+
 @app.route('/submit_code', methods=['POST'])
 def submit_code():
     d = request.json
@@ -284,10 +232,8 @@ def submit_code():
     for i, case in enumerate(q['test_cases']):
         actual, err = "", ""
         
-        # 1. TRY WANDBOX API
         actual, err, api_success = run_wandbox_api(d['code'], d['language'], case['input'])
         
-        # 2. FAILOVER: LOCAL PYTHON
         if not api_success:
             if is_python:
                 print("WANDBOX FAILED. SWITCHING TO LOCAL.")
@@ -295,7 +241,6 @@ def submit_code():
             else:
                 return jsonify({"success": True, "output": "⚠️ Judge Busy: Auto-Passed (C++/Java)"})
 
-        # 3. VERIFY
         actual = actual.strip()
         if err: return jsonify({"success": False, "type": "player", "output": f"Runtime Error:\n{err}"})
         if actual != case['output'].strip():
