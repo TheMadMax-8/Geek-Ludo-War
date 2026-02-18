@@ -350,8 +350,8 @@ def handle_disconnect():
 
 @app.route('/get_question', methods=['GET'])
 def get_question():
+    global QUESTION_BANK
     if not QUESTION_BANK:
-        global QUESTION_BANK
         QUESTION_BANK = load_questions()
     
     if not QUESTION_BANK:
