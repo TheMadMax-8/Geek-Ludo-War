@@ -60,7 +60,7 @@ socket.on('join_success', (data) => {
     myColor = data.color;
     currentRoom = data.room;
     document.getElementById('lobby-waiting-area').style.display = 'block';
-    document.getElementById('start-btn').style.display = 'block';
+    document.getElementById('start-btn').style.display = data.started ? 'none' : 'block';
     document.getElementById('lobby-status').style.color = "#2ecc71";
     document.getElementById('lobby-status').innerText = `✅ Joined Room ${currentRoom}. Waiting...`;
     if (data.started) document.getElementById('lobby-modal').style.display = 'none';
@@ -252,16 +252,14 @@ async function runCode() {
             consoleDiv.style.color = "#00ff00"; 
             
             const useLuck = document.getElementById('mode-toggle').checked;
-            let earnedSteps = 3; 
-            
+            let earnedSteps = 3;
             if (useLuck) {
                 earnedSteps = Math.floor(Math.random() * 6) + 1;
-                alert(`🎲 DICE ROLLED: ${earnedSteps}`); 
+                alert(`🎲 DICE ROLLED: ${earnedSteps}`);
             }
 
             setTimeout(() => {
                 document.getElementById('question-modal').style.display = 'none';
-                
                 socket.emit('submission_success', {
                     room: currentRoom,
                     code: userCode,
@@ -269,19 +267,22 @@ async function runCode() {
                     q_id: currentQuestionId,
                     steps: earnedSteps 
                 });
-                
                 alert("⏳ Waiting for other players to verify your code...");
             }, 1000);
-        } 
-        
-        else {
+        } else {
             consoleDiv.innerText = result.output;
-            consoleDiv.style.color = "red";
-            setTimeout(() => {
-                document.getElementById('question-modal').style.display = 'none';
-                alert("❌ Failed! Penalty: -3 Steps.");
-                handleSuccess(-3); 
-            }, 2000);
+            
+            if (result.type === 'system') {
+                consoleDiv.style.color = "orange";
+                alert("⚠️ API Error! Please try again. (No Penalty)");
+            } else {
+                consoleDiv.style.color = "red";
+                setTimeout(() => {
+                    document.getElementById('question-modal').style.display = 'none';
+                    alert("❌ Failed! Penalty: -3 Steps.");
+                    handleSuccess(-3); 
+                }, 2000);
+            }
         }
     } catch (err) { consoleDiv.innerText = "Network Error!"; }
 }
