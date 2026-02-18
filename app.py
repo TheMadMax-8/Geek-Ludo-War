@@ -38,19 +38,89 @@ LOBBIES = {}
 BASE_ORDER = ['red', 'green', 'yellow', 'blue'] 
 SAFE_INDICES = [0, 13, 26, 39]
 
+# --- YOUR CUSTOM QUESTION BANK (Hardcoded for Stability) ---
+QUESTION_BANK = [
+    {
+        "id": 1,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Check Prime: Write a program that takes an integer N as input and prints 'Yes' if it is prime, and 'No' otherwise.",
+        "standard_solution": {
+            "language": "python",
+            "code": "n = int(input())\nif n < 2:\n    print('No')\nelse:\n    is_prime = True\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            is_prime = False\n            break\n    print('Yes' if is_prime else 'No')"
+        },
+        "test_cases": [
+            { "input": "7", "output": "Yes", "type": "sample" },
+            { "input": "10", "output": "No", "type": "hidden" }
+        ]
+    },
+    {
+        "id": 2,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Reverse Words: First read an integer N (count of words), then read N space-separated words. Print them in reverse order.",
+        "standard_solution": {
+            "language": "python",
+            "code": "n = int(input())\nwords = input().split()\nprint(' '.join(words[::-1]))"
+        },
+        "test_cases": [
+            { "input": "2\nHello World", "output": "World Hello", "type": "sample" },
+            { "input": "3\nPython is awesome", "output": "awesome is Python", "type": "hidden" },
+            { "input": "1\nSingle", "output": "Single", "type": "hidden" }
+        ]
+    },
+    {
+        "id": 3,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Find Missing Number: First read N (the range 1 to N), then read N-1 integers. Find the missing number.",
+        "standard_solution": {
+            "language": "python",
+            "code": "n = int(input())\nnums = list(map(int, input().split()))\nexpected_sum = n * (n + 1) // 2\nactual_sum = sum(nums)\nprint(expected_sum - actual_sum)"
+        },
+        "test_cases": [
+            { "input": "5\n1 2 4 5", "output": "3", "type": "sample" },
+            { "input": "3\n1 3", "output": "2", "type": "hidden" },
+            { "input": "5\n2 3 4 5", "output": "1", "type": "hidden" }
+        ]
+    },
+    {
+        "id": 4,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Count Set Bits: Given an integer N, count the number of 1s in its binary representation.",
+        "standard_solution": {
+            "language": "cpp",
+            "code": "#include <iostream>\nusing namespace std;\nint main() {\n    long long n;\n    if (!(cin >> n)) return 0;\n    int count = 0;\n    while (n > 0) {\n        n = n & (n - 1);\n        count++;\n    }\n    cout << count;\n    return 0;\n}"
+        },
+        "test_cases": [
+            { "input": "5", "output": "2", "type": "sample" },
+            { "input": "7", "output": "3", "type": "hidden" },
+            { "input": "1024", "output": "1", "type": "hidden" }
+        ]
+    },
+    {
+        "id": 5,
+        "difficulty": "Easy",
+        "rating": 800,
+        "question": "Palindrome Check: Given a string, check if it is a palindrome. Print 'Yes' or 'No'.",
+        "standard_solution": {
+            "language": "java",
+            "code": "import java.util.Scanner;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if(sc.hasNext()) {\n            String s = sc.next();\n            String rev = new StringBuilder(s).reverse().toString();\n            if(s.equals(rev)) System.out.print(\"Yes\");\n            else System.out.print(\"No\");\n        }\n    }\n}"
+        },
+        "test_cases": [
+            { "input": "madam", "output": "Yes", "type": "sample" },
+            { "input": "hello", "output": "No", "type": "hidden" }
+        ]
+    }
+]
+
 def log_event(event_type, data):
     try:
         log_entry = {"timestamp": datetime.utcnow(), "event_type": event_type, "data": data}
         logs_collection.insert_one(log_entry)
     except Exception as e:
         print(f"Mongo Error: {e}")
-
-def load_questions():
-    try:
-        with open('questions.json', 'r') as f: return json.load(f)
-    except: return []
-
-QUESTION_BANK = load_questions()
 
 # --- LOCAL PYTHON FALLBACK ENGINE ---
 def run_python_local(code, input_str):
@@ -70,53 +140,29 @@ def run_python_local(code, input_str):
     except Exception as e:
         return "", f"Local Error: {str(e)}"
 
-# --- WANDBOX API ENGINE (The New API) ---
+# --- WANDBOX API ENGINE (Compatible with Render) ---
 def run_wandbox_api(code, lang, stdin):
     url = "https://wandbox.org/api/compile.json"
-    
-    # Map our simplified names to Wandbox internal compiler names
-    compiler_map = {
-        "python": "cpython-3.10.2",
-        "cpp": "gcc-11.1.0",
-        "java": "openjdk-16.0.1"
-    }
+    compiler_map = { "python": "cpython-3.10.2", "cpp": "gcc-11.1.0", "java": "openjdk-16.0.1" }
     
     payload = {
         "code": code,
         "compiler": compiler_map.get(lang, "cpython-3.10.2"),
         "stdin": stdin,
-        # 'options' helps GCC run smoothly
         "options": "warning" if lang == "cpp" else ""
     }
     
     try:
         resp = requests.post(url, json=payload, timeout=8)
-        
-        if resp.status_code != 200:
-            return "", "", False # API Failed
-            
+        if resp.status_code != 200: return "", "", False
         data = resp.json()
+        if 'status' not in data: return "", "", False
         
-        # Wandbox returns 'status' as a string "0" for success
-        if 'status' not in data:
-            return "", "", False
-            
-        # Extract Output
-        # 'program_message' is usually stdout
-        # 'compiler_error' is usually stderr
         stdout = data.get('program_message', '')
         stderr = data.get('compiler_error', '')
-        
-        # If exit status is non-zero, treat stdout as error info too
-        if data['status'] != "0":
-            stderr += f"\nExit Code: {data['status']}"
-            
+        if data['status'] != "0": stderr += f"\nExit Code: {data['status']}"
         return stdout, stderr, True
-
-    except Exception as e:
-        print(f"Wandbox Error: {e}")
-        return "", "", False
-
+    except: return "", "", False
 
 @app.route('/')
 def index(): return render_template('index.html')
@@ -172,9 +218,11 @@ def handle_join(data):
         exact_match.update({'id': sid, 'connected': True})
         room['players'][sid] = exact_match
         join_room(room_id)
+        log_event("session", {"room": room_id, "user_id": user_id, "action": "reconnect"})
     else:
         room['players'][sid] = { 'id': sid, 'name': name, 'color': color, 'step': -1, 'connected': True, 'user_id': user_id }
         join_room(room_id)
+        log_event("session", {"room": room_id, "user_id": user_id, "action": "join"})
 
     active_colors = [p['color'] for p in room['players'].values()]
     room['turn_order'] = sorted(active_colors, key=lambda x: BASE_ORDER.index(x))
@@ -236,19 +284,18 @@ def submit_code():
     for i, case in enumerate(q['test_cases']):
         actual, err = "", ""
         
-        # 1. TRY WANDBOX API (The New Engine)
+        # 1. TRY WANDBOX API
         actual, err, api_success = run_wandbox_api(d['code'], d['language'], case['input'])
         
-        # 2. FAILOVER: LOCAL PYTHON (If Wandbox Fails)
+        # 2. FAILOVER: LOCAL PYTHON
         if not api_success:
             if is_python:
                 print("WANDBOX FAILED. SWITCHING TO LOCAL.")
                 actual, err = run_python_local(d['code'], case['input'])
             else:
-                # C++/Java Failover (Auto-Pass)
                 return jsonify({"success": True, "output": "⚠️ Judge Busy: Auto-Passed (C++/Java)"})
 
-        # 3. VERIFY OUTPUT
+        # 3. VERIFY
         actual = actual.strip()
         if err: return jsonify({"success": False, "type": "player", "output": f"Runtime Error:\n{err}"})
         if actual != case['output'].strip():
@@ -270,6 +317,14 @@ def handle_disconnect():
             emit('update_player_list', {'players': player_list}, room=rid)
             if p['color'] == r['active_color']: pass_turn_logic(r, rid)
             break
+
+@app.route('/get_question', methods=['GET'])
+def get_question():
+    if not QUESTION_BANK:
+        return jsonify({"error": "No questions available"}), 404
+    q = random.choice(QUESTION_BANK)
+    sample = next((tc for tc in q.get('test_cases', []) if tc['type'] == 'sample'), None)
+    return jsonify({ "id": q['id'], "question": q['question'], "sample_input": sample['input'] if sample else "", "sample_output": sample['output'] if sample else "" })
 
 if __name__ == '__main__':
     socketio.run(app, debug=True)
