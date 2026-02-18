@@ -315,10 +315,10 @@ def run_code_piston(code, lang, stdin):
     url = "https://emkc.org/api/v2/piston/execute"
     payload = { "language": lang, "version": version_map.get(lang, "3.10.0"), "files": [{"content": code}], "stdin": stdin }
     try:
-        resp = requests.post(url, json=payload).json()
+        resp = requests.post(url, json=payload, timeout=5).json()
         if 'run' in resp: return resp['run']['stdout'], resp['run']['stderr']
     except: pass
-    return "", "Server Error"
+    return "", "System Error"
 
 @socketio.on('player_move')
 def handle_move(data):
@@ -350,11 +350,12 @@ def get_question():
 def submit_code():
     data = request.json
     user_code = data.get('code', '')
-    question_id = data.get('q_id')
+    question_id = int(data.get('q_id'))
     language = data.get('language', 'python')
 
     question_obj = next((q for q in QUESTION_BANK if q['id'] == question_id), None)
-    if not question_obj: return jsonify({"success": False, "output": "Question Not Found"})
+    if not question_obj: 
+        return jsonify({"success": False, "type": "system", "output": "Question Not Found"})
 
     version_map = { "python": "3.10.0", "cpp": "10.2.0", "java": "15.0.2" }
     url = "https://emkc.org/api/v2/piston/execute"
@@ -363,15 +364,26 @@ def submit_code():
     for i, case in enumerate(test_cases):
         payload = { "language": language, "version": version_map.get(language, "3.10.0"), "files": [{"content": user_code}], "stdin": case['input'] }
         try:
-            response = requests.post(url, json=payload)
+            response = requests.post(url, json=payload, timeout=5)
+            
+            if response.status_code != 200:
+                return jsonify({"success": False, "type": "system", "output": "API Error: Runner Busy"})
+
             result = response.json()
-            if 'run' not in result: return jsonify({"success": False, "output": "API Error"})
+            if 'run' not in result: 
+                return jsonify({"success": False, "type": "system", "output": "API Error: No Output"})
+            
             actual = result['run']['stdout'].strip()
             err = result['run']['stderr']
-            if err: return jsonify({"success": False, "output": f"Runtime Error on Test Case {i+1}:\n{err}"})
+            
+            if err: 
+                return jsonify({"success": False, "type": "player", "output": f"Runtime Error on Test Case {i+1}:\n{err}"})
+            
             if actual != case['output'].strip():
-                return jsonify({ "success": False, "output": f"❌ FAILED Test Case {i+1}\nInput:\n{case['input']}\nExpected:\n{case['output']}\nGot:\n{actual}" })
-        except: return jsonify({"success": False, "output": "Server Error"})
+                return jsonify({ "success": False, "type": "player", "output": f"❌ FAILED Test Case {i+1}\nInput:\n{case['input']}\nExpected:\n{case['output']}\nGot:\n{actual}" })
+                
+        except Exception as e:
+            return jsonify({"success": False, "type": "system", "output": "Server Connection Error"})
     
     return jsonify({"success": True, "output": "✅ PRETESTS PASSED"})
 
