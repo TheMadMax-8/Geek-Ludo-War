@@ -27,11 +27,7 @@ BASE_ORDER = ['red', 'green', 'yellow', 'blue']
 SAFE_INDICES = [0, 13, 26, 39]
 
 def log_event(event_type, data):
-    log_entry = {
-        "timestamp": datetime.utcnow(),
-        "event_type": event_type,
-        "data": data
-    }
+    log_entry = {"timestamp": datetime.utcnow(), "event_type": event_type, "data": data}
     try:
         logs_collection.insert_one(log_entry)
     except Exception as e:
@@ -47,17 +43,28 @@ QUESTION_BANK = load_questions()
 @app.route('/')
 def index(): return render_template('index.html')
 
-def pass_turn_logic(room, room_id):
-    room['hack_state'] = {
-        'active': False, 'victim': None, 'victim_code': None, 
-        'victim_lang': None, 'pending_hackers': [], 'hack_successful': False
+def run_code_piston(code, lang, stdin):
+    version_map = {"python": "3.10.0", "cpp": "10.2.0", "java": "15.0.2"}
+    url = "https://emkc.org/api/v2/piston/execute"
+    payload = {
+        "language": lang, 
+        "version": version_map.get(lang, "3.10.0"), 
+        "files": [{"content": code}], 
+        "stdin": stdin
     }
+    try:
+        resp = requests.post(url, json=payload).json()
+        if 'run' in resp:
+            return resp['run']['stdout'], resp['run']['stderr']
+    except: pass
+    return "", "Server Error"
+
+def pass_turn_logic(room, room_id):
+    room['hack_state'] = {'active': False, 'victim': None, 'victim_code': None, 'victim_lang': None, 'pending_hackers': [], 'hack_successful': False}
     turn_order = room['turn_order']
     if not turn_order: return
-    try:
-        current_idx = turn_order.index(room['active_color'])
-    except ValueError:
-        current_idx = -1
+    try: current_idx = turn_order.index(room['active_color'])
+    except ValueError: current_idx = -1
 
     for i in range(1, len(turn_order) + 1):
         next_idx = (current_idx + i) % len(turn_order)
@@ -71,18 +78,10 @@ def pass_turn_logic(room, room_id):
 def get_safe_question_data(q_id):
     q_obj = next((q for q in QUESTION_BANK if q['id'] == int(q_id)), None)
     if not q_obj: return "Unknown", "N/A", "N/A", "Unknown", 0
-    
     test_cases = q_obj.get('test_cases', [])
     sample = next((tc for tc in test_cases if tc.get('type') == 'sample'), None)
     if not sample and test_cases: sample = test_cases[0]
-    
-    return (
-        q_obj.get('question', 'No Text'),
-        sample.get('input', 'N/A'),
-        sample.get('output', 'N/A'),
-        q_obj.get('difficulty', 'Newbie'),
-        q_obj.get('rating', 800)
-    )
+    return q_obj.get('question', 'No Text'), sample.get('input', 'N/A'), sample.get('output', 'N/A'), q_obj.get('difficulty', 'Newbie'), q_obj.get('rating', 800)
 
 @socketio.on('join_game')
 def handle_join(data):
@@ -93,10 +92,7 @@ def handle_join(data):
     sid = request.sid
 
     if room_id not in LOBBIES:
-        LOBBIES[room_id] = {
-            'players': {}, 'turn_order': [], 'active_color': None, 
-            'started': False, 'hack_state': {'active': False}
-        }
+        LOBBIES[room_id] = {'players': {}, 'turn_order': [], 'active_color': None, 'started': False, 'hack_state': {'active': False}}
     
     room = LOBBIES[room_id]
     exact_match = next((p for p in room['players'].values() if p['color'] == color and p['name'] == name), None)
@@ -110,15 +106,11 @@ def handle_join(data):
         exact_match.update({'id': sid, 'connected': True})
         room['players'][sid] = exact_match
         join_room(room_id)
-        log_event("session", {"room": room_id, "user_id": user_id, "action": "reconnect"})
     else:
-        room['players'][sid] = {
-            'id': sid, 'name': name, 'color': color, 
-            'step': -1, 'connected': True, 'user_id': user_id
-        }
+        room['players'][sid] = {'id': sid, 'name': name, 'color': color, 'step': -1, 'connected': True, 'user_id': user_id}
         join_room(room_id)
-        log_event("session", {"room": room_id, "user_id": user_id, "action": "join"})
 
+    log_event("session", {"room": room_id, "user_id": user_id, "action": "join" if not exact_match else "reconnect"})
     active_colors = [p['color'] for p in room['players'].values()]
     room['turn_order'] = sorted(active_colors, key=lambda x: BASE_ORDER.index(x))
     if not room['active_color']: room['active_color'] = room['turn_order'][0]
@@ -143,7 +135,7 @@ def handle_submission_success(data):
     v = room['players'].get(request.sid)
     q_txt, s_in, s_out, diff, rat = get_safe_question_data(data['q_id'])
     
-    log_event("gameplay", {"user_id": v.get('user_id'), "action": "solve_success", "rating": rat})
+    log_event("gameplay", {"user_id": v.get('user_id'), "action": "solve_success", "rating": rat, "lang": data['language']})
     
     steps = data.get('steps', 3)
     v['prev_step'] = v['step']
@@ -155,15 +147,8 @@ def handle_submission_success(data):
         pass_turn_logic(room, data['room'])
         return
 
-    room['hack_state'] = {
-        'active': True, 'victim': v['color'], 'victim_code': data['code'],
-        'victim_lang': data['language'], 'question_id': data['q_id'],
-        'pending_hackers': hks, 'hack_successful': False
-    }
-    emit('hack_phase_start', {
-        'victim_name': v['name'], 'victim_color': v['color'], 'code': data['code'],
-        'question_text': q_txt, 'sample_input': s_in, 'sample_output': s_out
-    }, room=data['room'])
+    room['hack_state'] = {'active': True, 'victim': v['color'], 'victim_code': data['code'], 'victim_lang': data['language'], 'question_id': data['q_id'], 'pending_hackers': hks, 'hack_successful': False}
+    emit('hack_phase_start', {'victim_name': v['name'], 'victim_color': v['color'], 'code': data['code'], 'question_text': q_txt, 'sample_input': s_in, 'sample_output': s_out}, room=data['room'])
 
 @socketio.on('submit_hack_attempt')
 def handle_hack_attempt(data):
@@ -177,16 +162,10 @@ def handle_hack_attempt(data):
     if data['action'] == 'hack':
         q_obj = next(q for q in QUESTION_BANK if q['id'] == int(room['hack_state']['question_id']))
         std = q_obj['standard_solution']
-       
-        def run(c, l, i):
-            url = "https://emkc.org/api/v2/piston/execute"
-            payload = {"language": l, "version": "3.10.0", "files": [{"content": c}], "stdin": i}
-            r = requests.post(url, json=payload).json()
-            return r['run']['stdout'], r['run']['stderr']
-
-        s_out, s_err = run(std['code'], std['language'], data['input'])
+        
+        s_out, s_err = run_code_piston(std['code'], std['language'], data['input'])
         if not s_err and s_out.strip() == data['expected'].strip():
-            v_out, v_err = run(room['hack_state']['victim_code'], room['hack_state']['victim_lang'], data['input'])
+            v_out, v_err = run_code_piston(room['hack_state']['victim_code'], room['hack_state']['victim_lang'], data['input'])
             if v_err or v_out.strip() != data['expected'].strip():
                 hkr['step'] += 2
                 emit('animate_move', {'color': hkr['color'], 'total_steps_moved': 2}, room=data['room'])
@@ -234,7 +213,7 @@ def submit_code():
     d = request.json
     q = next(qu for qu in QUESTION_BANK if qu['id'] == d['q_id'])
     for c in q['test_cases']:
-        res = requests.post("https://emkc.org/api/v2/piston/execute", json={"language": d['language'], "version": "3.10.0", "files": [{"content": d['code']}], "stdin": c['input']}).json()
+        res = requests.post("https://emkc.org/api/v2/piston/execute", json={"language": d['language'], "version": "3.10.0" if d['language'] == "python" else "10.2.0", "files": [{"content": d['code']}], "stdin": c['input']}).json()
         if res['run']['stderr'] or res['run']['stdout'].strip() != c['output'].strip():
             return jsonify({"success": False, "output": "Failed Test Case"})
     return jsonify({"success": True})
