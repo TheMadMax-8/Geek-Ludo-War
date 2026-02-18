@@ -34,15 +34,16 @@ logs_collection = db.game_logs
 
 LOBBIES = {}
 BASE_ORDER = ['red', 'green', 'yellow', 'blue'] 
-SAFE_INDICES = [0, 13, 26, 39]
+SAFE_INDICES = [0, 8, 13, 21, 26, 34, 39, 47]
 
 def load_questions():
     try:
-        with open('questions.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
+        if os.path.exists('questions.json'):
+            with open('questions.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
     except Exception as e:
         print(f"Error loading questions.json: {e}")
-        return []
+    return []
 
 QUESTION_BANK = load_questions()
 
@@ -199,6 +200,91 @@ def handle_submission_success(data):
     sample = next((tc for tc in q_obj['test_cases'] if tc['type'] == 'sample'), q_obj['test_cases'][0])
     emit('hack_phase_start', {'victim_name': v['name'], 'victim_color': v['color'], 'code': data['code'], 'question_text': q_obj['question'], 'sample_input': sample['input'], 'sample_output': sample['output']}, room=data['room'])
 
+@socketio.on('submit_hack_attempt')
+def handle_hack_attempt(data):
+    room_id = data['room']
+    action = data['action']
+    hacker_input = data.get('input', '')
+    hacker_expected = data.get('expected', '')
+    
+    room = LOBBIES[room_id]
+    hacker = room['players'][request.sid]
+    victim_color = room['hack_state']['victim']
+    victim = next((p for p in room['players'].values() if p['color'] == victim_color), None)
+
+    if hacker['color'] in room['hack_state']['pending_hackers']:
+        room['hack_state']['pending_hackers'].remove(hacker['color'])
+
+    if action == 'skip':
+        emit('hack_log', {'message': f"{hacker['name']} skipped."}, room=room_id)
+        log_event("hack", {"hacker": hacker.get('user_id'), "victim": victim.get('user_id'), "action": "skip"})
+    
+    elif action == 'hack':
+        q_id = room['hack_state'].get('question_id')
+        question_obj = next((q for q in QUESTION_BANK if q['id'] == int(q_id)), None)
+        is_hack_valid = False
+        
+        if question_obj and 'standard_solution' in question_obj:
+            std_sol = question_obj['standard_solution']
+            std_out, std_err, success = run_wandbox_api(std_sol['code'], std_sol['language'], hacker_input)
+            
+            if not success and std_sol['language'] == 'python':
+                std_out, std_err = run_python_local(std_sol['code'], hacker_input)
+            elif not success:
+                std_out, std_err = "", "API Busy" 
+                
+            if not std_err and std_out.strip() == hacker_expected.strip():
+                is_hack_valid = True
+        
+        if not is_hack_valid:
+            hacker['step'] -= 2
+            if hacker['step'] < -1: hacker['step'] = -1
+            emit('animate_move', {'color': hacker['color'], 'total_steps_moved': -2}, room=room_id)
+            emit('hack_log', {'message': f"🚫 INVALID HACK! Expected output incorrect. (-2)"}, room=room_id)
+            log_event("hack", {"hacker": hacker.get('user_id'), "victim": victim.get('user_id'), "action": "fail_invalid"})
+        else:
+            vic_code = room['hack_state']['victim_code']
+            vic_lang = room['hack_state']['victim_lang']
+            
+            vic_out, vic_err, success = run_wandbox_api(vic_code, vic_lang, hacker_input)
+            if not success and vic_lang == 'python':
+                vic_out, vic_err = run_python_local(vic_code, hacker_input)
+            elif not success:
+                 vic_out, vic_err = "", "API Busy"
+
+            if vic_err or vic_out.strip() != hacker_expected.strip():
+                hacker['step'] += 2
+                emit('animate_move', {'color': hacker['color'], 'total_steps_moved': 2}, room=room_id)
+                emit('hack_log', {'message': f"⚔️ {hacker['name']} SUCCESS! (+2)"}, room=room_id)
+                log_event("hack", {"hacker": hacker.get('user_id'), "victim": victim.get('user_id'), "action": "success"})
+                
+                if not room['hack_state']['hack_successful']:
+                    room['hack_state']['hack_successful'] = True
+                    is_safe = victim['step'] in SAFE_INDICES
+                    old_pos = victim['step']
+                    
+                    if is_safe:
+                        msg = f"🛡️ {victim['name']} BLOCKED PENALTY (Safe Spot)!"
+                        target_pos = old_pos
+                    else:
+                        target_pos = old_pos - 3
+                        if target_pos < -1: target_pos = -1
+                        msg = f"💔 SOLUTION CRASHED! {victim['name']} penalized (-3)."
+
+                    emit('animate_move', {'color': victim['color'], 'total_steps_moved': target_pos - old_pos}, room=room_id)
+                    victim['step'] = target_pos
+                    emit('checkpoint_alert', {'message': msg}, room=room_id)
+            else:
+                hacker['step'] -= 2
+                if hacker['step'] < -1: hacker['step'] = -1
+                emit('animate_move', {'color': hacker['color'], 'total_steps_moved': -2}, room=room_id)
+                emit('hack_log', {'message': f"🛡️ Hack Failed. Victim code handled it! (-2)"}, room=room_id)
+                log_event("hack", {"hacker": hacker.get('user_id'), "victim": victim.get('user_id'), "action": "fail_survival"})
+
+    if not room['hack_state']['pending_hackers']:
+        emit('hack_phase_end', {}, room=room_id)
+        pass_turn_logic(room, room_id)
+
 @socketio.on('player_move')
 def handle_move(data):
     room_id = data.get('room')
@@ -236,10 +322,9 @@ def submit_code():
         
         if not api_success:
             if is_python:
-                print("WANDBOX FAILED. SWITCHING TO LOCAL.")
                 actual, err = run_python_local(d['code'], case['input'])
             else:
-                return jsonify({"success": True, "output": "⚠️ Judge Busy: Auto-Passed (C++/Java)"})
+                return jsonify({"success": False, "type": "system", "output": "Judge Error: API Busy (Try again or use Python)"})
 
         actual = actual.strip()
         if err: return jsonify({"success": False, "type": "player", "output": f"Runtime Error:\n{err}"})
@@ -266,7 +351,12 @@ def handle_disconnect():
 @app.route('/get_question', methods=['GET'])
 def get_question():
     if not QUESTION_BANK:
-        return jsonify({"error": "No questions available"}), 404
+        global QUESTION_BANK
+        QUESTION_BANK = load_questions()
+    
+    if not QUESTION_BANK:
+         return jsonify({"error": "No questions available"}), 404
+         
     q = random.choice(QUESTION_BANK)
     sample = next((tc for tc in q.get('test_cases', []) if tc['type'] == 'sample'), None)
     return jsonify({ "id": q['id'], "question": q['question'], "sample_input": sample['input'] if sample else "", "sample_output": sample['output'] if sample else "" })
