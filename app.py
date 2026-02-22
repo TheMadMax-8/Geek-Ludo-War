@@ -183,13 +183,20 @@ def handle_submission_success(data):
         "time_taken": time_taken,
         "rating": q_obj.get('rating', 800),
         "difficulty": q_obj.get('difficulty', 'Easy'),
-        "language": data.get('language', 'python')
+        "language": data.get('language', 'python'),
+        "luck_mode_enabled": data.get('luck_mode', False)
     }
     log_event("gameplay", log_data)
     move = data.get('steps', 3)
     v['prev_step'] = v['step']
     v['step'] += move
     emit('animate_move', {'color': v['color'], 'total_steps_moved': move}, room=data['room'])
+    if v['step'] >= 56:
+        log_event("game_finish", {
+            "winner_user_id": v.get('user_id'),
+            "room": data['room'],
+            "luck_mode_enabled": data.get('luck_mode', False)
+        })
     hks = [p['color'] for p in room['players'].values() if p['color'] != v['color'] and p.get('connected', True)]
     if not hks:
         pass_turn_logic(room, data['room'])
@@ -284,6 +291,12 @@ def handle_move(data):
     player['step'] += steps
     if player['step'] < -1: player['step'] = -1
     emit('animate_move', {'color': player['color'], 'total_steps_moved': steps}, room=room_id)
+    if player['step'] >= 56:
+        log_event("game_finish", {
+            "winner_user_id": player.get('user_id'),
+            "room": room_id,
+            "luck_mode_enabled": data.get('luck_mode', False)
+        })
     pass_turn_logic(room, room_id)
 
 @app.route('/submit_code', methods=['POST'])
