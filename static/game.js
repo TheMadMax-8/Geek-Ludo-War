@@ -200,9 +200,10 @@ async function openQuestion() {
 }
 
 function skipQuestion() {
+    const useLuck = document.getElementById('mode-toggle').checked;
     document.getElementById('question-modal').style.display = 'none';
     alert("⚠️ Mission Aborted! Penalty: -2 Steps.");
-    socket.emit('player_move', { steps: -2, room: currentRoom });
+    socket.emit('player_move', { steps: -2, room: currentRoom, luck_mode: useLuck });
 }
 
 async function runCode() {
@@ -226,7 +227,7 @@ async function runCode() {
             if (useLuck) alert(`🎲 DICE ROLLED: ${earnedSteps}`);
             setTimeout(() => {
                 document.getElementById('question-modal').style.display = 'none';
-                socket.emit('submission_success', { room: currentRoom, code: userCode, language: selectedLang, q_id: currentQuestionId, steps: earnedSteps });
+                socket.emit('submission_success', { room: currentRoom, code: userCode, language: selectedLang, q_id: currentQuestionId, steps: earnedSteps, luck_mode: useLuck });
                 alert("⏳ Waiting for other players to verify your code...");
             }, 1000);
         } else {
@@ -234,9 +235,10 @@ async function runCode() {
             consoleDiv.style.color = result.type === 'system' ? "orange" : "red";
             if (result.type !== 'system') {
                 setTimeout(() => {
+                    const useLuck = document.getElementById('mode-toggle').checked;
                     document.getElementById('question-modal').style.display = 'none';
                     alert("❌ Failed! Penalty: -3 Steps.");
-                    socket.emit('player_move', { steps: -3, room: currentRoom });
+                    socket.emit('player_move', { steps: -3, room: currentRoom, luck_mode: useLuck });
                 }, 2000);
             }
         }
