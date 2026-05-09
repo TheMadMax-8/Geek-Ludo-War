@@ -1,0 +1,6 @@
+user_id,total_solves,avg_solve_time,hack_attempts,hack_success_rate,luck_mode_usage,frustration_skips
+8c8a7003-77bc-4d9d-90f6-d1bc6ae498e9,5,42.094,1,1.0,0,2
+375e82e3-dec0-41d5-9618-23ecc2b52262,0,0.0,1,1.0,0,0
+13eb7078-fa2d-40ee-8fba-a7115139ad38,3,24.74,1,1.0,0,2
+dfb97923-00cd-49b2-a903-5e621da04c17,1,225.28,0,0.0,0,0
+93340fb3-ab8b-46a9-a327-c461aa88d6b0,0,0.0,0,0.0,0,0
