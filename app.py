@@ -12,6 +12,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit, join_room
 from pymongo import MongoClient
+from ml.rl_agent import get_cognitive_flow_adjustment
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
@@ -260,7 +261,16 @@ def handle_hack_attempt(data):
                         msg = f"🛡️ {victim['name']} BLOCKED PENALTY (Safe Spot)!"
                         target_pos = old_pos
                     else:
-                        target_pos = old_pos - 3
+                        flow_adjustment = get_cognitive_flow_adjustment(victim.get('user_id'), frustration_skips = 0) 
+                        
+                        if flow_adjustment.get('penalty_reduction'):
+                            target_pos = old_pos - 1
+                            msg = f"💔 SOLUTION CRASHED! {victim['name']} penalized (-1) [RL Agent Mitigated! Better Luck Next Time]."
+
+                        else:
+                            target_pos = old_pos - 3
+                            msg = f"💔 SOLUTION CRASHED! {victim['name']} penalized (-3)."
+
                         if target_pos < -1: target_pos = -1
                         msg = f"💔 SOLUTION CRASHED! {victim['name']} penalized (-3)."
                     emit('animate_move', {'color': victim['color'], 'total_steps_moved': target_pos - old_pos}, room=room_id)
