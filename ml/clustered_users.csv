@@ -1,7 +1,7 @@
 user_id,total_solves,avg_solve_time,hack_attempts,hack_success_rate,luck_mode_usage,frustration_skips,persona_cluster
-13eb7078-fa2d-40ee-8fba-a7115139ad38,3,24.74,1,1.0,0,2,2
-375e82e3-dec0-41d5-9618-23ecc2b52262,0,0.0,1,1.0,0,0,2
-dfb97923-00cd-49b2-a903-5e621da04c17,1,225.28,0,0.0,0,0,0
+13eb7078-fa2d-40ee-8fba-a7115139ad38,3,24.74,1,1.0,0,2,1
+375e82e3-dec0-41d5-9618-23ecc2b52262,0,0.0,1,1.0,0,0,1
+dfb97923-00cd-49b2-a903-5e621da04c17,1,225.28,0,0.0,0,0,2
 8c8a7003-77bc-4d9d-90f6-d1bc6ae498e9,16,56.99875000000001,4,0.5,0,13,0
 93340fb3-ab8b-46a9-a327-c461aa88d6b0,0,0.0,0,0.0,0,0,1
 bc7d113a-c7f1-4f22-850b-aedb08c76ef0,10,32.347,0,0.0,4,18,0
